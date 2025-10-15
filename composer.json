@@ -1,0 +1,24 @@
+{
+    "name": "softrang/image-helper",
+    "description": "A simple image upload, update, and delete helper for Laravel and PHP.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Softrang\\ImageHelper\\": "src/"
+        },
+        "files": [
+            "src/helpers.php"
+        ]
+    },
+    "authors": [
+        {
+            "name": "softrang",
+            "email": "softrang24@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^12.0"
+    }
+}
