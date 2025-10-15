@@ -131,9 +131,20 @@ if (!function_exists('update_image')) {
     function update_image(?UploadedFile $newFile, ?string $oldPath = null, string $dir = 'uploads', array $options = []): ?string
     {
         if ($newFile instanceof UploadedFile) {
-            if ($oldPath) delete_image($oldPath);
+            // Delete old image if exists
+            if ($oldPath) {
+                $fullOldPath = public_path(ltrim($oldPath, '/'));
+                if (file_exists($fullOldPath)) {
+                    @unlink($fullOldPath);
+                }
+            }
+
+            // Upload new image with resize & optimization
             return upload_image($newFile, $dir, $options);
         }
+
+        // If no new file uploaded, keep old
         return $oldPath;
     }
 }
+
