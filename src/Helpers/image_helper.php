@@ -29,7 +29,6 @@ if (!function_exists('upload_image')) {
 
         $tmpPath = $file->getRealPath();
 
-        // Supported types
         $createFunctions = [
             'jpg'  => 'imagecreatefromjpeg',
             'jpeg' => 'imagecreatefromjpeg',
@@ -41,7 +40,7 @@ if (!function_exists('upload_image')) {
         $saveFunctions = [
             'jpg'  => fn($img, $path, $quality) => imagejpeg($img, $path, $quality),
             'jpeg' => fn($img, $path, $quality) => imagejpeg($img, $path, $quality),
-            'png'  => fn($img, $path, $quality) => imagepng($img, $path, max(0, min(9, 9 - round($quality / 10)))),
+            'png'  => fn($img, $path, $quality) => imagepng($img, $path, max(0, min(9, 9 - round($quality/10)))),
             'gif'  => fn($img, $path, $quality) => imagegif($img, $path),
             'webp' => fn($img, $path, $quality) => imagewebp($img, $path, $quality),
         ];
@@ -55,6 +54,7 @@ if (!function_exists('upload_image')) {
         $origWidth = imagesx($source);
         $origHeight = imagesy($source);
 
+        // Resize logic
         if ($width && $height) {
             $newWidth = $width;
             $newHeight = $height;
@@ -71,34 +71,22 @@ if (!function_exists('upload_image')) {
 
         $canvas = imagecreatetruecolor($newWidth, $newHeight);
 
-        // ✅ Only setup transparency if alpha exists
-        if (in_array($ext, ['png', 'webp'])) {
-            $hasAlpha = false;
-            // check if PNG/WebP has alpha
-            if ($ext === 'png' || $ext === 'webp') {
-                for ($x = 0; $x < $origWidth && !$hasAlpha; $x++) {
-                    for ($y = 0; $y < $origHeight && !$hasAlpha; $y++) {
-                        $rgba = imagecolorat($source, $x, $y);
-                        $a = ($rgba & 0x7F000000) >> 24;
-                        if ($a > 0) $hasAlpha = true;
-                    }
-                }
-            }
-            if ($hasAlpha) {
-                imagealphablending($canvas, false);
-                imagesavealpha($canvas, true);
-                $transparent = imagecolorallocatealpha($canvas, 255, 255, 255, 127);
-                imagefilledrectangle($canvas, 0, 0, $newWidth, $newHeight, $transparent);
-            }
+        // Transparency
+        if (in_array($ext, ['png','webp'])) {
+            imagealphablending($canvas, false);
+            imagesavealpha($canvas, true);
+            $transparent = imagecolorallocatealpha($canvas, 255, 255, 255, 127);
+            imagefilledrectangle($canvas, 0, 0, $newWidth, $newHeight, $transparent);
         }
 
         imagecopyresampled($canvas, $source, 0, 0, 0, 0, $newWidth, $newHeight, $origWidth, $origHeight);
 
-        // ✅ Quality optimization (target 15-30KB)
-        $targetMin = 15 * 1024;
-        $targetMax = 30 * 1024;
+        // Quality optimization (15-30KB)
+        $targetMin = 15*1024;
+        $targetMax = 30*1024;
         $quality = 90;
-        $maxIterations = 5; // speed up PNG/WebP
+        $maxIterations = 5;
+        $imageData = '';
 
         for ($i = 0; $i < $maxIterations; $i++) {
             ob_start();
@@ -106,23 +94,20 @@ if (!function_exists('upload_image')) {
             $imageData = ob_get_clean();
             $size = strlen($imageData);
 
-            if ($size > $targetMax && $quality > 40) {
-                $quality -= 10;
-            } elseif ($size < $targetMin && $quality < 95) {
-                $quality += 5;
-            } else {
-                break;
-            }
+            if ($size > $targetMax && $quality > 40) $quality -= 10;
+            elseif ($size < $targetMin && $quality < 95) $quality += 5;
+            else break;
         }
 
-        file_put_contents($targetPath . '/' . $filename, $imageData);
+        file_put_contents($targetPath.'/'.$filename, $imageData);
 
         imagedestroy($canvas);
         imagedestroy($source);
 
-        return $dir . '/' . $filename;
+        return $dir.'/'.$filename;
     }
 }
+
 
 
 
