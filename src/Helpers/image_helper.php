@@ -18,14 +18,9 @@ if (!function_exists('upload_image')) {
 
         $dir = trim($dir, '/');
         $targetPath = public_path($dir);
+        if (!is_dir($targetPath)) mkdir($targetPath, 0755, true);
 
-        if (!is_dir($targetPath)) {
-            mkdir($targetPath, 0755, true);
-        }
-
-        $baseName = $options['name']
-            ?? pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-
+        $baseName = $options['name'] ?? pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
         $slug = Str::slug($baseName) ?: 'file';
         $filename = $slug . '-' . Str::random(10) . '.' . $ext;
 
@@ -34,19 +29,32 @@ if (!function_exists('upload_image')) {
 
         $tmpPath = $file->getRealPath();
 
-        // Create image resource
-        $source = match ($ext) {
-            'jpeg', 'jpg' => imagecreatefromjpeg($tmpPath),
-            'png' => imagecreatefrompng($tmpPath),
-            'gif' => imagecreatefromgif($tmpPath),
-            'webp' => imagecreatefromwebp($tmpPath),
-            default => throw new InvalidArgumentException("Unsupported image type: $ext"),
-        };
+        // Supported types
+        $createFunctions = [
+            'jpg'  => 'imagecreatefromjpeg',
+            'jpeg' => 'imagecreatefromjpeg',
+            'png'  => 'imagecreatefrompng',
+            'gif'  => 'imagecreatefromgif',
+            'webp' => 'imagecreatefromwebp',
+        ];
+
+        $saveFunctions = [
+            'jpg'  => fn($img, $path, $quality) => imagejpeg($img, $path, $quality),
+            'jpeg' => fn($img, $path, $quality) => imagejpeg($img, $path, $quality),
+            'png'  => fn($img, $path, $quality) => imagepng($img, $path, max(0, min(9, 9 - round($quality / 10)))),
+            'gif'  => fn($img, $path, $quality) => imagegif($img, $path),
+            'webp' => fn($img, $path, $quality) => imagewebp($img, $path, $quality),
+        ];
+
+        if (!isset($createFunctions[$ext])) {
+            throw new InvalidArgumentException("Unsupported image type: $ext");
+        }
+
+        $source = $createFunctions[$ext]($tmpPath);
 
         $origWidth = imagesx($source);
         $origHeight = imagesy($source);
 
-        // ✅ Auto width/height maintain
         if ($width && $height) {
             $newWidth = $width;
             $newHeight = $height;
@@ -63,36 +71,41 @@ if (!function_exists('upload_image')) {
 
         $canvas = imagecreatetruecolor($newWidth, $newHeight);
 
-        // ✅ Transparent PNG/WebP support
+        // ✅ Only setup transparency if alpha exists
         if (in_array($ext, ['png', 'webp'])) {
-            imagealphablending($canvas, false);
-            imagesavealpha($canvas, true);
-            $transparent = imagecolorallocatealpha($canvas, 255, 255, 255, 127);
-            imagefilledrectangle($canvas, 0, 0, $newWidth, $newHeight, $transparent);
+            $hasAlpha = false;
+            // check if PNG/WebP has alpha
+            if ($ext === 'png' || $ext === 'webp') {
+                for ($x = 0; $x < $origWidth && !$hasAlpha; $x++) {
+                    for ($y = 0; $y < $origHeight && !$hasAlpha; $y++) {
+                        $rgba = imagecolorat($source, $x, $y);
+                        $a = ($rgba & 0x7F000000) >> 24;
+                        if ($a > 0) $hasAlpha = true;
+                    }
+                }
+            }
+            if ($hasAlpha) {
+                imagealphablending($canvas, false);
+                imagesavealpha($canvas, true);
+                $transparent = imagecolorallocatealpha($canvas, 255, 255, 255, 127);
+                imagefilledrectangle($canvas, 0, 0, $newWidth, $newHeight, $transparent);
+            }
         }
 
-        // ✅ Resize
         imagecopyresampled($canvas, $source, 0, 0, 0, 0, $newWidth, $newHeight, $origWidth, $origHeight);
 
-        $savePath = $targetPath . '/' . $filename;
+        // ✅ Quality optimization (target 15-30KB)
+        $targetMin = 15 * 1024;
+        $targetMax = 30 * 1024;
+        $quality = 90;
+        $maxIterations = 5; // speed up PNG/WebP
 
-        // ✅ Quality optimization
-        $targetMin = 15 * 1024; // 15 KB
-        $targetMax = 30 * 1024; // 30 KB
-        $quality = 90; // start with high quality
-
-        do {
+        for ($i = 0; $i < $maxIterations; $i++) {
             ob_start();
-            match ($ext) {
-                'jpeg', 'jpg' => imagejpeg($canvas, null, $quality),
-                'png' => imagepng($canvas, null, 9 - round($quality / 10)), // inverse scale
-                'webp' => imagewebp($canvas, null, $quality),
-                default => imagejpeg($canvas, null, $quality),
-            };
+            $saveFunctions[$ext]($canvas, null, $quality);
             $imageData = ob_get_clean();
             $size = strlen($imageData);
 
-            // Adjust quality based on size
             if ($size > $targetMax && $quality > 40) {
                 $quality -= 10;
             } elseif ($size < $targetMin && $quality < 95) {
@@ -100,9 +113,9 @@ if (!function_exists('upload_image')) {
             } else {
                 break;
             }
-        } while (true);
+        }
 
-        file_put_contents($savePath, $imageData);
+        file_put_contents($targetPath . '/' . $filename, $imageData);
 
         imagedestroy($canvas);
         imagedestroy($source);
@@ -110,6 +123,7 @@ if (!function_exists('upload_image')) {
         return $dir . '/' . $filename;
     }
 }
+
 
 
 /**
