@@ -11,6 +11,7 @@ A simple and developer-friendly helper for image upload, update, and delete in L
     <li>Optimize image quality and size (target 15–30 KB)</li>
     <li>Support for JPEG, PNG, GIF, WebP formats</li>
 </ul>
+
 ## 1️⃣ Install via Composer
 
 ```bash
@@ -149,6 +150,7 @@ MIT License – free to use, modify, and distribute.
     <li>If your images are stored inside subdirectories of <code>public/uploads</code> (like <code>public/uploads/subfolder/filename.jpg</code>), and your database does not store the full path, then <code>asset($image)</code> may not generate the correct URL.</li>
     <li>Do <strong>not</strong> prepend <code>'uploads/'</code> again if your database path already contains it.</li>
 </ul>
+
 
 
 
