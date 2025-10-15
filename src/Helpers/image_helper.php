@@ -34,7 +34,7 @@ if (!function_exists('upload_image')) {
 
         $tmpPath = $file->getRealPath();
 
-        // Create image resource from file
+        // Create image resource
         $source = match ($ext) {
             'jpeg', 'jpg' => imagecreatefromjpeg($tmpPath),
             'png' => imagecreatefrompng($tmpPath),
@@ -46,6 +46,7 @@ if (!function_exists('upload_image')) {
         $origWidth = imagesx($source);
         $origHeight = imagesy($source);
 
+        // ✅ Auto width/height maintain
         if ($width && $height) {
             $newWidth = $width;
             $newHeight = $height;
@@ -62,7 +63,7 @@ if (!function_exists('upload_image')) {
 
         $canvas = imagecreatetruecolor($newWidth, $newHeight);
 
-        // Transparent PNG/WebP support
+        // ✅ Transparent PNG/WebP support
         if (in_array($ext, ['png', 'webp'])) {
             imagealphablending($canvas, false);
             imagesavealpha($canvas, true);
@@ -70,18 +71,38 @@ if (!function_exists('upload_image')) {
             imagefilledrectangle($canvas, 0, 0, $newWidth, $newHeight, $transparent);
         }
 
-        // Resize
+        // ✅ Resize
         imagecopyresampled($canvas, $source, 0, 0, 0, 0, $newWidth, $newHeight, $origWidth, $origHeight);
 
         $savePath = $targetPath . '/' . $filename;
 
-        // Save to disk
-        match ($ext) {
-            'jpeg', 'jpg' => imagejpeg($canvas, $savePath, 90),
-            'png' => imagepng($canvas, $savePath),
-            'gif' => imagegif($canvas, $savePath),
-            'webp' => imagewebp($canvas, $savePath, 90),
-        };
+        // ✅ Quality optimization
+        $targetMin = 15 * 1024; // 15 KB
+        $targetMax = 30 * 1024; // 30 KB
+        $quality = 90; // start with high quality
+
+        do {
+            ob_start();
+            match ($ext) {
+                'jpeg', 'jpg' => imagejpeg($canvas, null, $quality),
+                'png' => imagepng($canvas, null, 9 - round($quality / 10)), // inverse scale
+                'webp' => imagewebp($canvas, null, $quality),
+                default => imagejpeg($canvas, null, $quality),
+            };
+            $imageData = ob_get_clean();
+            $size = strlen($imageData);
+
+            // Adjust quality based on size
+            if ($size > $targetMax && $quality > 40) {
+                $quality -= 10;
+            } elseif ($size < $targetMin && $quality < 95) {
+                $quality += 5;
+            } else {
+                break;
+            }
+        } while (true);
+
+        file_put_contents($savePath, $imageData);
 
         imagedestroy($canvas);
         imagedestroy($source);
@@ -89,6 +110,7 @@ if (!function_exists('upload_image')) {
         return $dir . '/' . $filename;
     }
 }
+
 
 /**
  * Delete image from public path
